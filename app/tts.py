@@ -46,7 +46,11 @@ class TTSModule:
         if not text.strip():
             return
         if self.backend == "online" and _groq_client:
-            await self._speak_online(text)
+            try:
+                await self._speak_online(text)
+            except Exception as exc:
+                print(f"[TTS] Online failed ({exc}), falling back to offline")
+                await self._speak_offline(text)
         else:
             await self._speak_offline(text)
 
@@ -64,8 +68,8 @@ class TTSModule:
 
         def _run():
             response = _groq_client.audio.speech.create(
-                model="playai-tts",
-                voice="Fritz-PlayAI",
+                model="canopylabs/orpheus-v1-english",
+                voice="tara",
                 input=text,
                 response_format="wav",
             )
