@@ -1,2 +1,93 @@
 <!DOCTYPE html>
-<html><body>SignBridge</body></html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SignBridge</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<nav>
+  <div class="nav-left">
+    <span class="status-dot" id="statusDot"></span>
+    <span class="logo">Sign<span class="accent">Bridge</span></span>
+    <select id="modelSelect" class="model-select" onchange="setModel(this.value)">
+      <option value="cnn">CNN (HSV)</option>
+      <option value="hog">HOG+SVM</option>
+      <option value="mediapipe">MediaPipe</option>
+    </select>
+  </div>
+  <div class="nav-right">
+    <span class="badge" id="ttsBadge" onclick="toggleTTSPanel()">🔊 TTS: Offline</span>
+    <span class="badge" id="sttBadge">🎤 STT: Ready</span>
+  </div>
+</nav>
+
+<div class="main">
+
+  <!-- WEBCAM PANEL -->
+  <div class="webcam-panel">
+    <div class="webcam-view">
+      <img id="videoFeed" src="/video_feed" alt="Camera feed">
+      <div class="letter-overlay" id="letterOverlay"></div>
+    </div>
+    <div class="word-bar">
+      <span class="bar-label">Word</span>
+      <span class="word-text" id="wordText">(hold a sign)</span>
+      <span class="bar-hints">
+        <kbd>Enter</kbd> speak &nbsp;
+        <kbd>C</kbd> clear &nbsp;
+        <kbd>⌫</kbd> delete
+      </span>
+    </div>
+    <div class="sentence-bar">
+      <span class="bar-label">Sentence</span>
+      <span class="sentence-text" id="sentenceText"></span>
+      <button class="speak-btn" onclick="speakNow()">▶ Speak</button>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+
+    <!-- Fingerspelling -->
+    <div class="panel-section">
+      <div class="panel-title">Speech → Sign <span class="pill">Fingerspelling</span></div>
+      <div class="sign-display">
+        <img id="signImg" src="" alt="" style="display:none">
+        <span id="signPlaceholder" class="sign-placeholder">🎤</span>
+      </div>
+      <div class="spell-word" id="spellWord"></div>
+      <button id="recordBtn" class="record-btn"
+              onmousedown="startRecording()" onmouseup="stopRecording()"
+              ontouchstart="startRecording()" ontouchend="stopRecording()">
+        Hold to Record
+      </button>
+    </div>
+
+    <!-- TTS controls -->
+    <div class="panel-section" id="ttsPanel">
+      <div class="panel-title">TTS Voice</div>
+      <div class="tts-row">
+        <button class="tts-opt active" id="offlineBtn" onclick="setTTSBackend('offline')">🖥 Offline</button>
+        <button class="tts-opt" id="onlineBtn" onclick="setTTSBackend('online')">☁ Online (Groq)</button>
+      </div>
+      <div class="trigger-row">
+        <span class="chip active">Auto (3s)</span>
+        <span class="chip active">Enter key</span>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="history-panel" id="historyPanel">
+      <div class="panel-title">Conversation</div>
+      <div id="historyList"></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
