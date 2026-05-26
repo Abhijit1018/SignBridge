@@ -1,4 +1,5 @@
-Sign-Language-Recognition/
+# Sign-Language-Recognition has its own git repo (tracked as submodule-like reference)
+# Sign-Language-Recognition/
 .env
 __pycache__/
 *.pyc
