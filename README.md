@@ -1,45 +1,111 @@
-# SignBridge
+<div align="center">
 
-A real-time communication bridge between a deaf person and a hearing person in the same room.
+# 🤟 SignBridge
 
-- **Sign → Text → Speech**: Deaf person signs ASL letters → app recognizes them → builds a sentence → speaks it aloud automatically
-- **Speech → Sign**: Hearing person speaks → Groq Whisper transcribes → app animates ASL fingerspelling letter-by-letter on screen
+**Real-time communication between a deaf person and a hearing person — no interpreter needed.**
 
----
+[![Python](https://img.shields.io/badge/Python-3.9--3.11-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.x-FF6F00?style=flat&logo=tensorflow&logoColor=white)](https://tensorflow.org)
+[![Groq](https://img.shields.io/badge/Powered%20by-Groq-F55036?style=flat)](https://console.groq.com)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat)](https://opensource.org/licenses/Apache-2.0)
 
-## Demo
-
-| Feature | Description |
-|---------|-------------|
-| Live webcam feed | Stream with ROI overlay, confidence bar, stability progress |
-| Sign recognition | CNN (HSV), HOG+SVM, or MediaPipe landmarks — switchable at runtime |
-| Auto TTS | Sentence spoken aloud after 3s of no hand, or on `Enter` key |
-| TTS voice | Toggle between offline (pyttsx3, zero latency) and online (Groq PlayAI) |
-| Speech → Fingerspell | Hold the mic button → speak → watch letters animate on screen |
-| Conversation history | Scrollable log of what was signed and what was spoken |
+</div>
 
 ---
 
-## Architecture
+## What is SignBridge?
+
+SignBridge is a web-based communication bridge that lets a **deaf person** and a **hearing person** talk to each other in the same room using just a laptop.
 
 ```
-d:\handgesture\
-├── app\
-│   ├── main.py          FastAPI app — routes, WebSocket hub, fan-out event system
-│   ├── engine.py        Sign recognition loop (background thread, MJPEG frames)
-│   ├── word_builder.py  State machine — letter → word → sentence (two gap timers)
-│   ├── tts.py           TTS — pyttsx3 offline + Groq PlayAI online, togglable
-│   ├── stt.py           STT — Groq Whisper via REST
-│   └── static\
-│       ├── index.html   Dashboard UI
-│       ├── style.css
-│       ├── app.js
-│       └── signs\       26 ASL letter PNGs (A–Z)
-├── Sign-Language-Recognition\   CNN model + training scripts (original)
-├── tests\               28 unit tests (pytest)
-├── scripts\
-│   └── generate_signs.py  Generate placeholder sign images with Pillow
-├── run.py               Uvicorn entrypoint
+Deaf person signs ASL  →  webcam recognizes letters  →  builds sentence  →  speaks it aloud
+Hearing person speaks  →  Groq Whisper transcribes   →  animates ASL fingerspelling on screen
+```
+
+No interpreter. No typing. Just sign and speak.
+
+---
+
+## Features
+
+| | Feature | Detail |
+|--|---------|--------|
+| 🎥 | **Live webcam feed** | MJPEG stream with ROI overlay, confidence bar, stability progress |
+| 🧠 | **3 recognition backends** | CNN (HSV segmentation), HOG+SVM, MediaPipe landmarks — switchable at runtime |
+| 🔊 | **Auto Text-to-Speech** | Sentence auto-spoken after 3s pause, or manually with `Enter` |
+| 🎙 | **Dual TTS voice** | Offline (pyttsx3, zero latency) or Online (Groq PlayAI, natural voice) |
+| 👋 | **Speech → Fingerspelling** | Hold-to-record mic → Groq Whisper → ASL letter animation |
+| 📜 | **Conversation history** | Live scrollable log with signer (green) and speaker (cyan) messages |
+| ⚙️ | **Runtime config** | Switch model, camera, ROI, confidence threshold from the dashboard |
+
+---
+
+## How It Works
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   Browser Dashboard                 │
+│  ┌──────────────────┐    ┌─────────────────────┐   │
+│  │  Webcam + ROI    │    │  Fingerspelling      │   │
+│  │  Letter: A 0.92  │    │  H E [L] L O        │   │
+│  │  ████████░░ 80%  │    │  🎤 Hold to Record  │   │
+│  │                  │    │                     │   │
+│  │  Word:  HELLO    │    │  TTS: ○ Offline     │   │
+│  │  Sentence: ...   │    │       ● Online      │   │
+│  └──────────────────┘    └─────────────────────┘   │
+└────────────────┬───────────────────┬────────────────┘
+                 │ WebSocket         │ POST /api/stt
+        ┌────────▼────────┐  ┌───────▼────────┐
+        │   engine.py     │  │    stt.py       │
+        │  Camera thread  │  │  Groq Whisper   │
+        │  CNN/HOG/MP     │  └───────┬────────┘
+        │  WordBuilder    │          │ text
+        └────────┬────────┘   ┌──────▼──────┐
+                 │ events     │   main.py   │
+                 └────────────►  Fan-out    │
+                              │  hub        │
+                              └──────┬──────┘
+                                     │
+                          ┌──────────▼──────────┐
+                          │      tts.py          │
+                          │  sentence_ready →    │
+                          │  pyttsx3 / Groq TTS  │
+                          └─────────────────────┘
+```
+
+### Word Builder — Two Gap Timers
+
+The `WordBuilder` state machine converts raw predictions into words:
+
+| Event | Trigger | Action |
+|-------|---------|--------|
+| Letter accepted | Sign held steady for **~0.7s** (20 stable frames) | Appended to word buffer |
+| Space added | No confident hand for **1.5s** | Space inserted |
+| Sentence spoken | No confident hand for **3.0s** + buffer non-empty | `sentence_ready` event → TTS |
+
+---
+
+## Project Structure
+
+```
+SignBridge/
+├── app/
+│   ├── main.py           FastAPI app — routes, WebSocket hub, fan-out event system
+│   ├── engine.py         Recognition engine — background camera thread, MJPEG frames
+│   ├── word_builder.py   State machine — letter → word → sentence (two gap timers)
+│   ├── tts.py            TTS — pyttsx3 offline + Groq PlayAI online, togglable
+│   ├── stt.py            STT — Groq Whisper transcription via REST
+│   └── static/
+│       ├── index.html    Dashboard UI
+│       ├── style.css     Dark theme
+│       ├── app.js        WebSocket client, fingerspell animation, MediaRecorder
+│       └── signs/        26 ASL letter PNGs (A–Z)
+├── Sign-Language-Recognition/   CNN model, training scripts, HOG+SVM trainer
+├── tests/                28 unit + integration tests (pytest)
+├── scripts/
+│   └── generate_signs.py Generate placeholder sign images with Pillow
+├── run.py                Uvicorn entrypoint
 ├── requirements.txt
 └── .env.example
 ```
@@ -48,161 +114,209 @@ d:\handgesture\
 
 ## Quick Start
 
-### 1. Prerequisites
+### Prerequisites
 
-- Python 3.9–3.11 (TensorFlow does not support 3.13)
-- A trained CNN model at `Sign-Language-Recognition/CNNmodel.h5` ([train instructions below](#training-the-cnn-model))
-- A [Groq API key](https://console.groq.com) (free tier)
+- **Python 3.9–3.11** (TensorFlow doesn't support 3.13 yet)
+- A trained CNN model at `Sign-Language-Recognition/CNNmodel.h5` → [train it here](#training-the-cnn-model)
+- A **Groq API key** → [get one free at console.groq.com](https://console.groq.com)
 
-### 2. Install dependencies
+### Install
 
 ```bash
+git clone https://github.com/Abhijit1018/SignBridge.git
+cd SignBridge
 pip install -r requirements.txt
 ```
 
-### 3. Set up environment
+### Configure
 
 ```bash
 cp .env.example .env
-# Edit .env and set GROQ_API_KEY=gsk_...
 ```
 
-### 4. Run
+Edit `.env`:
+
+```env
+GROQ_API_KEY=gsk_your_key_here
+```
+
+### Run
 
 ```bash
 python run.py
 ```
 
-Open **http://localhost:8000** in your browser.
+Open **[http://localhost:8000](http://localhost:8000)**
 
 ---
 
 ## Usage
 
-### Deaf person (signing)
+### For the deaf person (signing)
 
-1. Put your hand inside the yellow ROI box on the webcam feed
-2. Hold each letter steady — it auto-appends after ~0.7s of stability
-3. Remove your hand for 1.5s → space is added
-4. Remove your hand for 3.0s → sentence is spoken aloud automatically
-5. Or press **Enter** to speak the current sentence immediately
-6. **C** clears the word buffer, **Backspace** deletes the last character
+1. Position your hand inside the **yellow ROI box** on the webcam feed
+2. Hold each letter steady — it auto-appends after ~0.7s
+3. Remove hand for **1.5s** → space is added automatically
+4. Remove hand for **3.0s** → sentence is **spoken aloud** for the hearing person
+5. Press `Enter` to speak immediately without waiting
 
-### Hearing person (speaking)
+### For the hearing person (speaking)
 
-1. Click and hold **🎤 Record** in the right panel
-2. Speak your message
-3. Release → Groq Whisper transcribes → letters animate as ASL fingerspelling on screen
+1. Click and **hold** the **🎤 Record** button in the right panel
+2. Speak your message clearly
+3. Release → Groq Whisper transcribes → ASL letters **animate on screen** for the deaf person
 
-### Controls
+### Keyboard Shortcuts
 
-| Key / Button | Action |
-|---|---|
+| Key | Action |
+|-----|--------|
 | `Enter` | Speak current sentence via TTS |
 | `C` | Clear word buffer |
 | `Backspace` | Delete last character |
-| Hold 🎤 | Record audio for STT |
-| ▶ Speak | Manual TTS trigger |
-| Offline / Online | Switch TTS voice backend |
-| Model selector | Switch recognition backend (CNN / HOG+SVM / MediaPipe) |
 
 ---
 
 ## Recognition Backends
 
-| Backend | How it works | When to use |
-|---------|-------------|-------------|
-| **CNN (HSV)** | HSV skin segmentation → 28×28 grayscale → CNN | Default; best accuracy with good lighting |
-| **HOG+SVM** | HOG features → SVM classifier | Faster on CPU; train with `train_hog_model.py` |
-| **MediaPipe** | 21 hand landmarks → SVM on normalized coords | Lighting-independent; requires hand detection |
+Switch between backends from the **navbar dropdown** — no restart needed.
+
+| Backend | Method | Best for |
+|---------|--------|---------|
+| **CNN (HSV)** | HSV skin segmentation → 28×28 CNN | Default — best accuracy with good lighting |
+| **HOG+SVM** | Histogram of Gradients → SVM | Faster on CPU, good for low-end hardware |
+| **MediaPipe** | 21 hand landmarks → normalized SVM | Lighting-independent, most robust |
 
 ---
 
 ## Training the CNN Model
 
-1. Download `sign_mnist_train.csv` and `sign_mnist_test.csv` from [Kaggle](https://www.kaggle.com/datamunge/sign-language-mnist)
-2. Place them in `Sign-Language-Recognition/data/`
+1. Download from [Kaggle — Sign Language MNIST](https://www.kaggle.com/datamunge/sign-language-mnist)
+2. Place CSVs in `Sign-Language-Recognition/data/`
 3. Train:
 
 ```bash
 cd Sign-Language-Recognition
-python cnn.py --train-csv data/sign_mnist_train.csv --test-csv data/sign_mnist_test.csv --epochs 15 --model-out CNNmodel.h5 --labels-out labels.txt
+python cnn.py \
+  --train-csv data/sign_mnist_train.csv \
+  --test-csv  data/sign_mnist_test.csv \
+  --epochs 15 \
+  --model-out CNNmodel.h5 \
+  --labels-out labels.txt
 ```
 
-> **Note:** J and Z are excluded from the dataset — they require motion gestures.
+> **Note:** Letters J and Z are excluded — they require motion and can't be captured as static frames.
 
 ---
 
 ## API Reference
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | Dashboard HTML |
-| `GET` | `/video_feed` | MJPEG webcam stream |
-| `WS` | `/ws` | Engine event stream (JSON) |
-| `POST` | `/api/stt` | Upload audio → transcribed text |
-| `POST` | `/api/tts/speak` | `{text}` → speak immediately |
-| `POST` | `/api/tts/config` | `{backend: "offline"\|"online"}` |
-| `POST` | `/api/config` | `{model, camera, roi, min_prob, flip}` |
-| `GET` | `/api/history` | Conversation history list |
+### REST Endpoints
 
-### WebSocket Events (server → client)
+| Method | Endpoint | Body | Response |
+|--------|----------|------|---------|
+| `GET` | `/` | — | Dashboard HTML |
+| `GET` | `/video_feed` | — | MJPEG stream |
+| `GET` | `/api/history` | — | `[{role, text, timestamp}]` |
+| `POST` | `/api/stt` | `multipart/form-data` audio | `{text}` |
+| `POST` | `/api/tts/speak` | `{text}` | `204` |
+| `POST` | `/api/tts/config` | `{backend: "offline"\|"online"}` | `204` |
+| `POST` | `/api/config` | `{model, camera, roi, min_prob, flip}` | `204` |
+
+### WebSocket Events — `ws://localhost:8000/ws`
 
 ```json
 { "type": "letter_detected",  "letter": "A", "confidence": 0.92, "stable_progress": 0.6 }
 { "type": "word_updated",     "word": "HELLO" }
 { "type": "sentence_ready",   "sentence": "HELLO WORLD" }
-{ "type": "stt_result",       "text": "How are you?" }
-{ "type": "engine_error",     "message": "Camera not found" }
+{ "type": "stt_result",       "text": "How are you today?" }
+{ "type": "engine_error",     "message": "Camera not found at index 0" }
 ```
 
 ---
 
-## Running Tests
+## Tests
 
 ```bash
 pytest tests/ -v
 ```
 
-28 tests across word builder, TTS, STT, and API modules.
+```
+tests/test_word_builder.py   12 tests  — state machine, timers, edge cases
+tests/test_tts.py             6 tests  — backend switching, speak routing
+tests/test_stt.py             3 tests  — transcription, empty audio, no key
+tests/test_api.py             7 tests  — routes, WebSocket, history endpoint
+─────────────────────────────────────────
+28 passed in 1.78s
+```
 
 ---
 
-## Dependencies
+## Stack
 
-| Package | Purpose |
-|---------|---------|
-| `fastapi` + `uvicorn` | Web server and WebSocket hub |
-| `opencv-python` | Camera capture, HSV segmentation, MJPEG encoding |
-| `tensorflow` | CNN sign classification |
-| `mediapipe` | Hand landmark detection |
-| `scikit-learn` | HOG+SVM backend |
-| `pyttsx3` | Offline TTS (Windows SAPI) |
-| `groq` | Groq Whisper STT + PlayAI TTS |
-| `python-dotenv` | `.env` API key loading |
-| `Pillow` | Generating placeholder sign images |
+| Layer | Technology |
+|-------|-----------|
+| Web server | FastAPI + Uvicorn |
+| Real-time | WebSocket (fan-out queue) + MJPEG |
+| Computer vision | OpenCV (capture, segmentation, encoding) |
+| Sign classification | TensorFlow/Keras CNN, scikit-learn SVM |
+| Hand landmarks | MediaPipe |
+| Speech-to-text | Groq Whisper (`whisper-large-v3-turbo`) |
+| Text-to-speech | pyttsx3 (offline) + Groq PlayAI (`playai-tts`) |
+| Frontend | Vanilla JS + CSS (no framework) |
 
 ---
 
 ## Troubleshooting
 
-**Camera not opening**
-Try `POST /api/config` with `{"camera": 1}` or check that no other app is using the webcam.
+<details>
+<summary><strong>Camera not opening</strong></summary>
 
-**Low sign recognition accuracy**
-- Ensure good lighting on your hand
-- Use `--roi` to reposition the detection box over your hand
-- Retrain the CNN with more data or more epochs
+Try switching camera index from the dashboard or send:
+```bash
+curl -X POST http://localhost:8000/api/config -H "Content-Type: application/json" -d '{"camera": 1}'
+```
+Close any other app using the webcam (Teams, Zoom, etc.).
+</details>
 
-**No TTS audio**
-- Offline: ensure Windows SAPI voices are installed (Control Panel → Speech)
-- Online: check `GROQ_API_KEY` in `.env` and that `sounddevice` is installed
+<details>
+<summary><strong>Low sign recognition accuracy</strong></summary>
 
-**Groq API errors**
-Verify your key at [console.groq.com](https://console.groq.com). The free tier supports Whisper + PlayAI TTS.
+- Ensure your hand is well-lit and fully inside the yellow ROI box
+- Try switching to the **MediaPipe** backend — it's lighting-independent
+- Retrain the CNN on your own hands with more epochs
+</details>
+
+<details>
+<summary><strong>No TTS audio (offline)</strong></summary>
+
+Ensure Windows SAPI voices are installed:
+**Settings → Time & Language → Speech → Manage voices**
+</details>
+
+<details>
+<summary><strong>No TTS audio (online) / Groq errors</strong></summary>
+
+- Verify `GROQ_API_KEY` is set in `.env`
+- Check your key at [console.groq.com](https://console.groq.com)
+- Ensure `sounddevice` is installed: `pip install sounddevice soundfile`
+</details>
+
+<details>
+<summary><strong>MediaRecorder not working in browser</strong></summary>
+
+Chrome and Edge require HTTPS or localhost for microphone access. If you're accessing from another machine on the network, set up a reverse proxy with TLS or use the host machine's browser directly.
+</details>
 
 ---
 
 ## License
 
-Apache 2.0 — see original `Sign-Language-Recognition/` for the base project license.
+Apache 2.0 — see [`Sign-Language-Recognition/`](./Sign-Language-Recognition/) for the base project license.
+
+---
+
+<div align="center">
+
+Built with FastAPI · OpenCV · TensorFlow · MediaPipe · Groq
+
+</div>
