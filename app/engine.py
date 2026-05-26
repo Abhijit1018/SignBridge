@@ -30,7 +30,7 @@ class RecognitionEngine:
             "model_path": str(SLR / "CNNmodel.h5"),
             "labels_path": str(SLR / "labels.txt"),
             "camera": 0,
-            "roi": (100, 50, 300, 300),
+            "roi": (350, 50, 250, 260),
             "flip": False,
             "min_prob": 0.5,
             "hist_path": None,
@@ -111,6 +111,20 @@ class RecognitionEngine:
                 "word": word,
             })
 
+    def _has_hand_blob(self, mask: np.ndarray) -> bool:
+        """Return True only if the mask contains a plausible hand-sized skin blob.
+
+        Rejects: no skin at all, giant face/body blobs, tiny noise specks.
+        """
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return False
+        largest_area = max(cv2.contourArea(c) for c in contours)
+        total_pixels = mask.shape[0] * mask.shape[1]
+        min_area = total_pixels * 0.04   # hand must cover at least 4% of ROI
+        max_area = total_pixels * 0.75   # blobs larger than 75% = face/body, reject
+        return min_area <= largest_area <= max_area
+
     def _draw_overlay(self, frame, wb: WordBuilder, roi, label, score):
         x, y, w, h = roi
         fh, fw = frame.shape[:2]
@@ -187,7 +201,7 @@ class RecognitionEngine:
                 if roi_frame.size == 0:
                     continue
 
-                segmented, _ = segment_hand(roi_frame, hist)
+                segmented, mask = segment_hand(roi_frame, hist)
                 tensor = prepare_tensor(segmented, input_shape)
                 probs = model.predict(tensor, verbose=0)[0]
                 pred_class = int(np.argmax(probs))
@@ -198,7 +212,8 @@ class RecognitionEngine:
                 for v in history:
                     counts[v] = counts.get(v, 0) + 1
                 smooth = max(counts, key=counts.get)
-                confident = pred_score >= cfg["min_prob"] and smooth < len(labels)
+                hand_present = self._has_hand_blob(mask)
+                confident = hand_present and pred_score >= cfg["min_prob"] and smooth < len(labels)
                 label = labels[smooth] if confident else None
 
                 events = wb.process(label, confident)
@@ -250,9 +265,10 @@ class RecognitionEngine:
                 roi_frame = frame[y:y+h, x:x+w]
                 if roi_frame.size == 0:
                     continue
-                segmented, _ = segment_hand(roi_frame, hist)
+                segmented, mask = segment_hand(roi_frame, hist)
                 label, score = _predict(segmented)
-                confident = score >= cfg["min_prob"]
+                hand_present = self._has_hand_blob(mask)
+                confident = hand_present and score >= cfg["min_prob"]
                 label = label if confident else None
                 events = wb.process(label, confident)
                 self._handle_events(events, wb, label, score)
