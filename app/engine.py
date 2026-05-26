@@ -278,9 +278,10 @@ class RecognitionEngine:
             cap.release()
 
     def _run_mediapipe(self):
-        import mediapipe.solutions.hands as mp_hands
-        import mediapipe.solutions.drawing_utils as mp_draw
-        import mediapipe.solutions.drawing_styles as mp_styles
+        import mediapipe as _mp
+        mp_hands = _mp.solutions.hands
+        mp_draw = _mp.solutions.drawing_utils
+        mp_styles = _mp.solutions.drawing_styles
         import pickle
         from collections import deque
 
